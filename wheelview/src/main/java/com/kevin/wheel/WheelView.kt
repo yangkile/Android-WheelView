@@ -40,6 +40,7 @@ import android.widget.OverScroller
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.pow
 import kotlin.math.sin
 
 /**
@@ -317,15 +318,7 @@ open class WheelView @JvmOverloads constructor(
      */
     private var onWheelChangedListener: OnWheelChangedListener? = null
 
-    /**
-     * 音频
-     */
-    private var soundHelper = SoundHelper()
 
-    /**
-     * 是否开启音频效果
-     */
-    private var isSoundEffect = false
 
     private var selectItemPosition = 0
 
@@ -346,7 +339,7 @@ open class WheelView @JvmOverloads constructor(
         val ta = context.obtainStyledAttributes(attrs, R.styleable.WheelView)
         textSize = ta.getDimension(R.styleable.WheelView_wv_textSize, DEFAULT_TEXT_SIZE)
         isAutoFitTextSize = ta.getBoolean(R.styleable.WheelView_wv_autoFitTextSize, false)
-        textAlign = ta.getInt(R.styleable.WheelView_wv_textAlign, TEXT_ALIGN_CENTER)
+        textAlign = ta.getInt(R.styleable.WheelView_wv_textAlign, TEXT_ALIGN_RIGHT)
         textBoundaryMargin = ta.getDimension(
             R.styleable.WheelView_wv_textBoundaryMargin,
             DEFAULT_TEXT_BOUNDARY_MARGIN
@@ -386,7 +379,7 @@ open class WheelView @JvmOverloads constructor(
         selectedRectColor =
             ta.getColor(R.styleable.WheelView_wv_selectedRectColor, Color.TRANSPARENT)
 
-        isCurved = ta.getBoolean(R.styleable.WheelView_wv_curved, true)
+        isCurved = ta.getBoolean(R.styleable.WheelView_wv_curved, false)
         curvedArcDirection = ta.getInt(
             R.styleable.WheelView_wv_curvedArcDirection,
             CURVED_ARC_DIRECTION_CENTER
@@ -415,7 +408,6 @@ open class WheelView @JvmOverloads constructor(
         val viewConfiguration = ViewConfiguration.get(context)
         maxFlingVelocity = viewConfiguration.scaledMaximumFlingVelocity
         minFlingVelocity = viewConfiguration.scaledMinimumFlingVelocity
-        initDefaultVolume(context)
         calculateTextSize()
         updateTextAlign()
     }
@@ -741,27 +733,6 @@ open class WheelView @JvmOverloads constructor(
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
-        soundHelper.release()
-    }
-
-    /**
-     * 初始化默认音量
-     *
-     * @param context 上下文
-     */
-    private fun initDefaultVolume(context: Context) {
-        val audioManager = context.getSystemService(Context.AUDIO_SERVICE)
-        if (audioManager != null) {
-            audioManager as AudioManager
-            // 获取系统媒体当前音量
-            val currentVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-            // 获取系统媒体最大音量
-            val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-            // 设置播放音量
-            soundHelper.playVolume = currentVolume * 1.0f / maxVolume
-        } else {
-            soundHelper.playVolume = 0.3f
-        }
     }
 
     /**
@@ -880,7 +851,7 @@ open class WheelView @JvmOverloads constructor(
                 maxIndex = scrolledItem + halfItem + 1
             }
             else -> {
-                minIndex = scrolledItem - halfItem
+                minIndex = scrolledItem - halfItem +1
                 maxIndex = scrolledItem + halfItem
             }
         }
@@ -1082,6 +1053,11 @@ open class WheelView @JvmOverloads constructor(
         centerToBaselineY: Int
     ) {
         canvas.save()
+        //缩放文本
+        val i = abs(item2CenterOffsetY*1f / itemHeight*1f)
+        val scale=1-i*0.2f
+        paint.alpha = (255*(0.3*i.pow(2)-i+1)).toInt()
+        paint.textSize = textSize*scale
         canvas.clipRect(clipLeft, clipTop, clipRight, clipBottom)
         canvas.drawText(
             text,
@@ -1091,6 +1067,8 @@ open class WheelView @JvmOverloads constructor(
             (this.centerY + item2CenterOffsetY - centerToBaselineY).toFloat(),
             paint
         )
+        paint.textSize = textSize
+        paint.alpha = 255
         canvas.restore()
     }
 
@@ -1577,21 +1555,11 @@ open class WheelView @JvmOverloads constructor(
             if (onWheelChangedListener != null) {
                 onWheelChangedListener!!.onWheelItemChanged(oldPosition, newPosition)
             }
-            // 播放音频
-            playSoundEffect()
             // 更新下标
             currentScrollPosition = newPosition
         }
     }
 
-    /**
-     * 播放滚动音效
-     */
-    fun playSoundEffect() {
-        if (isSoundEffect) {
-            soundHelper.playSoundEffect()
-        }
-    }
 
     /**
      * 强制滚动完成，直接停止
@@ -1712,50 +1680,7 @@ open class WheelView @JvmOverloads constructor(
             return currentPosition
         }
 
-    /**
-     * 获取音效开关状态
-     *
-     * @return 是否开启滚动音效
-     */
-    fun isSoundEffect(): Boolean {
-        return isSoundEffect
-    }
 
-    /**
-     * 设置音效开关
-     *
-     * @param isSoundEffect 是否开启滚动音效
-     */
-    fun setSoundEffect(isSoundEffect: Boolean) {
-        this.isSoundEffect = isSoundEffect
-    }
-
-    /**
-     * 设置声音效果资源
-     *
-     * @param rawResId 声音效果资源 越小效果越好 [RawRes]
-     */
-    fun setSoundEffectResource(@RawRes rawResId: Int) {
-        soundHelper.load(context, rawResId)
-    }
-
-    /**
-     * 获取播放音量
-     *
-     * @return 播放音量 range 0.0-1.0
-     */
-    fun getPlayVolume(): Float {
-        return soundHelper.playVolume
-    }
-
-    /**
-     * 设置播放音量
-     *
-     * @param playVolume 播放音量 range 0.0-1.0
-     */
-    fun setPlayVolume(@FloatRange(from = 0.0, to = 1.0) playVolume: Float) {
-        soundHelper.playVolume = playVolume
-    }
 
     /**
      * 获取指定 position 的数据
@@ -1995,7 +1920,7 @@ open class WheelView @JvmOverloads constructor(
      * @return 调整后的可见条目数
      */
     private fun adjustVisibleItems(visibleItems: Int): Int {
-        return abs(visibleItems / 2 * 2 + 1) // 当传入的值为偶数时,换算成奇数;
+        return visibleItems // 当传入的值为偶数时,换算成奇数;
     }
 
     /**
@@ -2374,56 +2299,6 @@ open class WheelView @JvmOverloads constructor(
         override fun onWheelSelected(position: Int) {}
 
         override fun onWheelScrollStateChanged(state: Int) {}
-    }
-
-    /**
-     * SoundPool 辅助类
-     */
-    private class SoundHelper {
-
-        private val soundPool: SoundPool
-
-        private var soundId: Int = 0
-
-        /**
-         * 音频播放音量 range 0.0-1.0
-         */
-        var playVolume: Float = 0.toFloat()
-
-        init {
-            soundPool = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                SoundPool.Builder().build()
-            } else {
-                @Suppress("DEPRECATION")
-                SoundPool(1, AudioManager.STREAM_SYSTEM, 1)
-            }
-        }
-
-        /**
-         * 加载音频资源
-         *
-         * @param context 上下文
-         * @param resId   音频资源 [RawRes]
-         */
-        fun load(context: Context, @RawRes resId: Int) {
-            soundId = soundPool.load(context, resId, 1)
-        }
-
-        /**
-         * 播放声音效果
-         */
-        fun playSoundEffect() {
-            if (soundId != 0) {
-                soundPool.play(soundId, playVolume, playVolume, 1, 0, 1f)
-            }
-        }
-
-        /**
-         * 释放SoundPool
-         */
-        fun release() {
-            soundPool.release()
-        }
     }
 
     companion object {
